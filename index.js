@@ -1,20 +1,25 @@
 const express = require('express');
 const cors = require('cors');
+const http = require('http');
+const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: 'http://localhost:3000', methods: ['GET', 'POST'] }
+});
 const prisma = new PrismaClient();
 const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
 
-// ── 서버 상태 확인 ─────────────────────────────────
-app.get('/', (req, res) => {
-  res.json({ message: '⚾ Dugout 서버 정상 작동 중!', version: '2.0.0' });
-});
+// ── REST API ────────────────────────────────────────
 
-// ── 게시글 API ──────────────────────────────────────
+app.get('/', (req, res) => {
+  res.json({ message: '⚾ Dugout 서버 실행 중!', version: '2.0.0' });
+});
 
 // 게시글 목록
 app.get('/api/posts', async (req, res) => {
@@ -50,7 +55,7 @@ app.post('/api/posts/:id/like', async (req, res) => {
   try {
     const post = await prisma.post.update({
       where: { id: parseInt(req.params.id) },
-      data: { likes: { increment: 1 } },
+      data: { likes: { increment:1 } },
     });
     res.json({ success:true, data:post });
   } catch(e) {
@@ -58,39 +63,7 @@ app.post('/api/posts/:id/like', async (req, res) => {
   }
 });
 
-// ── 채팅 API ────────────────────────────────────────
-
-// 채팅 메시지 목록
-app.get('/api/chat', async (req, res) => {
-  try {
-    const messages = await prisma.chatMessage.findMany({
-      include: { user: { select: { name:true } } },
-      orderBy: { createdAt: 'asc' },
-      take: 50,
-    });
-    res.json({ success:true, data:messages });
-  } catch(e) {
-    res.status(500).json({ success:false, message:e.message });
-  }
-});
-
-// 채팅 메시지 전송
-app.post('/api/chat', async (req, res) => {
-  try {
-    const { message, userId } = req.body;
-    const newMsg = await prisma.chatMessage.create({
-      data: { message, userId },
-      include: { user: { select: { name:true } } },
-    });
-    res.status(201).json({ success:true, data:newMsg });
-  } catch(e) {
-    res.status(500).json({ success:false, message:e.message });
-  }
-});
-
-// ── 유저 API ────────────────────────────────────────
-
-// 유저 생성 (회원가입)
+// 유저 생성
 app.post('/api/users', async (req, res) => {
   try {
     const { email, name, team } = req.body;
@@ -105,28 +78,15 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-// 유저 정보 조회
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: parseInt(req.params.id) },
-    });
-    if (!user) return res.status(404).json({ success:false, message:'유저 없음' });
-    res.json({ success:true, data:user });
-  } catch(e) {
-    res.status(500).json({ success:false, message:e.message });
-  }
-});
-
-// 출석체크 포인트
+// 출석체크
 app.post('/api/users/:id/checkin', async (req, res) => {
   try {
     const user = await prisma.user.update({
       where: { id: parseInt(req.params.id) },
-      data: { points: { increment: 50 } },
+      data: { points: { increment:50 } },
     });
     await prisma.pointLog.create({
-      data: { userId: user.id, amount:50, reason:'출석체크' }
+      data: { userId:user.id, amount:50, reason:'출석체크' }
     });
     res.json({ success:true, data:user });
   } catch(e) {
@@ -134,7 +94,71 @@ app.post('/api/users/:id/checkin', async (req, res) => {
   }
 });
 
+// ── Socket.io 실시간 채팅 ───────────────────────────
+io.on('connection', (socket) => {
+  console.log(`✅ 유저 접속: ${socket.id}`);
+
+  // 입장 시 최근 채팅 50개 전송
+  socket.on('join', async (roomId) => {
+    socket.join(roomId);
+    try {
+      const messages = await prisma.chatMessage.findMany({
+        where: { roomId },
+        include: { user: { select: { name:true } } },
+        orderBy: { createdAt: 'asc' },
+        take: 50,
+      });
+      socket.emit('chat_history', messages);
+    } catch(e) {
+      console.log('채팅 기록 불러오기 실패:', e.message);
+    }
+  });
+
+  // 메시지 수신 → DB 저장 → 전체 전송
+  socket.on('send_message', async (data) => {
+    try {
+      const { message, userId, roomId, userName } = data;
+// 유저가 없으면 임시 유저 생성
+let user = await prisma.user.findFirst({ where: { id: userId||1 } });
+if (!user) {
+  user = await prisma.user.create({
+    data: { email:`temp_${Date.now()}@dugout.app`, name: userName||'익명', team:'LG' }
+  });
+}
+const newMsg = await prisma.chatMessage.create({
+  data: { message, userId: user.id, roomId: roomId||'general' },
+        include: { user: { select: { name:true } } },
+      });
+      // 같은 방 모든 유저에게 전송
+      io.to(roomId||'general').emit('receive_message', {
+        id: newMsg.id,
+        message: newMsg.message,
+        userName: newMsg.user.name,
+        createdAt: newMsg.createdAt,
+      });
+    } catch(e) {
+      console.log('메시지 저장 실패:', e.message);
+      // DB 저장 실패해도 화면엔 보이게
+      socket.to(data.roomId||'general').emit('receive_message', {
+        id: Date.now(),
+        message: data.message,
+        userName: data.userName,
+        createdAt: new Date(),
+      });
+    }
+  });
+
+  // 이모지 반응 (DB 저장 없이 실시간만)
+  socket.on('reaction', (data) => {
+    io.to(data.roomId||'general').emit('receive_reaction', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`❌ 유저 퇴장: ${socket.id}`);
+  });
+});
+
 // ── 서버 시작 ───────────────────────────────────────
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`✅ Dugout 서버 실행 중: http://localhost:${PORT}`);
-})
+});
