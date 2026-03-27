@@ -3,6 +3,10 @@ const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const session = require('express-session');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +17,74 @@ const prisma = new PrismaClient();
 const PORT = 3001;
 
 app.use(cors());
+// 세션 설정
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Google OAuth 전략
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: '/auth/google/callback',
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    const user = await prisma.user.upsert({
+      where: { email: profile.emails[0].value },
+      update: { name: profile.displayName },
+      create: {
+        email: profile.emails[0].value,
+        name: profile.displayName,
+        team: 'LG',
+      },
+    });
+    return done(null, user);
+  } catch(e) {
+    return done(e, null);
+  }
+}));
+
+passport.serializeUser((user, done) => done(null, user.id));
+passport.deserializeUser(async (id, done) => {
+  const user = await prisma.user.findUnique({ where: { id } });
+  done(null, user);
+});
+
+// Google 로그인 라우터
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+app.get('/auth/google/callback',
+  passport.authenticate('google', { failureRedirect: '/auth/failed' }),
+  (req, res) => {
+    const token = jwt.sign(
+      { id: req.user.id, name: req.user.name, email: req.user.email, team: req.user.team },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${token}`);
+  }
+);
+
+app.get('/auth/failed', (req, res) => {
+  res.json({ success: false, message: '로그인 실패' });
+});
+
+app.get('/auth/me', (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ success: false, message: '토큰 없음' });
+  try {
+    const user = jwt.verify(token, process.env.JWT_SECRET);
+    res.json({ success: true, data: user });
+  } catch(e) {
+    res.status(401).json({ success: false, message: '토큰 만료' });
+  }
+});
 app.use(express.json());
 
 // ── REST API ────────────────────────────────────────
