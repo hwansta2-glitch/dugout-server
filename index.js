@@ -470,8 +470,9 @@ app.get('/api/kbo/games/:date', async (req, res) => {
   const now = Date.now();
 
   // 캐시 유효: 오늘 경기는 60초, 지난/미래 경기는 1시간
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  // KST 기준 오늘 날짜 (UTC+9)
+  const todayKST = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const todayStr = `${todayKST.getUTCFullYear()}${String(todayKST.getUTCMonth()+1).padStart(2,'0')}${String(todayKST.getUTCDate()).padStart(2,'0')}`;
   const cacheTTL = date === todayStr ? 60000 : 3600000;
 
   if (kboCache[cacheKey] && now - kboCache[cacheKey].time < cacheTTL) {
