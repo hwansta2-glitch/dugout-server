@@ -68,11 +68,13 @@ app.get('/auth/google/callback',
   }
 );
 app.get('/auth/failed', (req, res) => res.json({ success: false, message: '로그인 실패' }));
-app.get('/auth/me', (req, res) => {
+app.get('/auth/me', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ success: false, message: '토큰 없음' });
   try {
-    const user = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) return res.status(401).json({ success: false, message: '유저 없음' });
     res.json({ success: true, data: user });
   } catch(e) { res.status(401).json({ success: false, message: '토큰 만료' }); }
 });
