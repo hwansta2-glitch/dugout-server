@@ -31,6 +31,8 @@ model Post {
   likes     Int       @default(0)
   dislikes  Int       @default(0)
   views     Int       @default(0)
+  imageUrl  String?
+  videoUrl  String?
   author    User      @relation(fields: [authorId], references: [id])
   authorId  Int
   comments  Comment[]
