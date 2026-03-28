@@ -8,15 +8,17 @@ datasource db {
 }
 
 model User {
-  id        Int           @id @default(autoincrement())
-  email     String        @unique
-  name      String
-  team      String
-  points    Int           @default(0)
-  createdAt DateTime      @default(now())
-  posts     Post[]
-  comments  Comment[]
-  messages  ChatMessage[]
+  id                 Int           @id @default(autoincrement())
+  email              String        @unique
+  name               String
+  nickname           String?       @unique
+  nicknameChangedAt  DateTime?
+  team               String
+  points             Int           @default(0)
+  createdAt          DateTime      @default(now())
+  posts              Post[]
+  comments           Comment[]
+  messages           ChatMessage[]
 }
 
 model Post {

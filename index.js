@@ -202,4 +202,67 @@ app.get('/api/news', (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   });
 });
+// 닉네임 설정 (최초 1회)
+app.post('/api/users/:id/nickname', async (req, res) => {
+  try {
+    const { nickname } = req.body;
+    // 유효성 검사: 2~8글자, 한영숫자
+    const valid = /^[a-zA-Z0-9가-힣]{2,8}$/.test(nickname);
+    if (!valid) return res.status(400).json({ success: false, message: '닉네임은 2~8글자 한영숫자만 가능합니다' });
+
+    // 중복 확인
+    const exists = await prisma.user.findFirst({ where: { nickname } });
+    if (exists) return res.status(400).json({ success: false, message: '이미 사용 중인 닉네임입니다' });
+
+    // 7일 제한 확인
+    const user = await prisma.user.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (user.nicknameChangedAt) {
+      const diff = Date.now() - new Date(user.nicknameChangedAt).getTime();
+      const days = diff / (1000 * 60 * 60 * 24);
+      if (days < 7) {
+        const remaining = Math.ceil(7 - days);
+        return res.status(400).json({ success: false, message: `닉네임 변경은 ${remaining}일 후 가능합니다` });
+      }
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: parseInt(req.params.id) },
+      data: { nickname, nicknameChangedAt: new Date() },
+    });
+    res.json({ success: true, data: updated });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 댓글 목록
+app.get('/api/posts/:id/comments', async (req, res) => {
+  try {
+    const comments = await prisma.comment.findMany({
+      where: { postId: parseInt(req.params.id) },
+      include: { author: { select: { nickname: true, name: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json({ success: true, data: comments });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 댓글 작성
+app.post('/api/posts/:id/comments', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: '로그인 필요' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const { content } = req.body;
+    const comment = await prisma.comment.create({
+      data: { content, authorId: decoded.id, postId: parseInt(req.params.id) },
+      include: { author: { select: { nickname: true, name: true } } },
+    });
+    res.status(201).json({ success: true, data: comment });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 server.listen(PORT, () => console.log('✅ Dugout 서버 실행 중: http://localhost:' + PORT));
