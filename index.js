@@ -11,13 +11,32 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: 'http://localhost:3000', methods: ['GET', 'POST'] }
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  }
 });
 const prisma = new PrismaClient();
 const PORT = 3001;
 
-app.use(cors());
-// 세션 설정
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://voluble-snickerdoodle-794915.netlify.app',
+];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // origin이 없으면 서버간 요청 (허용)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS 차단: ' + origin));
+  },
+  credentials: true,
+}));
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -111,9 +130,19 @@ app.get('/api/posts', async (req, res) => {
 // 게시글 작성
 app.post('/api/posts', async (req, res) => {
   try {
-    const { title, content, team, boardType, authorId } = req.body;
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success:false, message:'로그인 필요' });
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const { title, content, team, boardType } = req.body;
     const post = await prisma.post.create({
-      data: { title, content, team, boardType: boardType||'team', authorId },
+      data: {
+        title,
+        content: content || '',
+        team: team || '',
+        boardType: boardType || 'team',
+        authorId: decoded.id,
+      },
       include: { author: { select: { name:true, team:true } } },
     });
     res.status(201).json({ success:true, data:post });
