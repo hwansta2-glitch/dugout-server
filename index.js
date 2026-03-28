@@ -404,50 +404,23 @@ io.on('connection', (socket) => {
 async function saveGameResults(dateStr) {
   try {
     console.log('[크론] ' + dateStr + ' 저장 시작');
-    const cheerio = require('cheerio');
     const listUrl = 'https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList?leId=1&srId=0,1,3,4,5&date=' + dateStr;
     const listRes = await axios.get(listUrl, {
       timeout: 15000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Referer': 'https://www.koreabaseball.com' }
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.koreabaseball.com' }
     });
     const listData = listRes.data;
     if (!listData?.game?.length) { console.log('[크론] 경기 없음'); return; }
 
-    const scoreRes = await axios.get('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx', {
-      timeout: 15000,
-      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Referer': 'https://www.koreabaseball.com' }
-    });
-    const $ = cheerio.load(scoreRes.data);
-    const scoreMap = {};
-    $('.tScore').each((i, table) => {
-      const rows = $(table).find('tbody tr');
-      if (rows.length < 2) return;
-      const away = $(rows[0]).find('th').text().trim();
-      const home = $(rows[1]).find('th').text().trim();
-      const as = $(rows[0]).find('.point').text().trim();
-      const hs = $(rows[1]).find('.point').text().trim();
-      const aTds = $(rows[0]).find('td:not(.point):not(.hit)').toArray();
-      const hTds = $(rows[1]).find('td:not(.point):not(.hit)').toArray();
-      const innings = aTds.slice(0,12).map((td,idx) => ({
-        away: $(td).text().trim()==='-' ? null : parseInt($(td).text()),
-        home: $(hTds[idx]).text().trim()==='-' ? null : parseInt($(hTds[idx]).text()),
-      })).filter(x => x.away!==null || x.home!==null);
-      scoreMap[away+'-'+home] = {
-        awayScore: as&&as!=='-' ? parseInt(as) : null,
-        homeScore: hs&&hs!=='-' ? parseInt(hs) : null,
-        innings,
-      };
-    });
-
+    let savedCount = 0;
     for (const g of listData.game) {
-      const key = (g.AWAY_NM||'').trim() + '-' + (g.HOME_NM||'').trim();
-      const scores = scoreMap[key] || {};
-      if (scores.awayScore == null) continue;
+      const awayScore = (g.AWAY_SCORE != null && g.AWAY_SCORE !== '') ? parseInt(g.AWAY_SCORE) : null;
+      const homeScore = (g.HOME_SCORE != null && g.HOME_SCORE !== '') ? parseInt(g.HOME_SCORE) : null;
+      if (awayScore == null) { console.log('[크론] 점수없음:', g.AWAY_NM, 'vs', g.HOME_NM); continue; }
       await prisma.gameResult.upsert({
         where: { gameId: g.G_ID },
         update: {
-          awayScore: scores.awayScore, homeScore: scores.homeScore,
-          innings: scores.innings,
+          awayScore, homeScore,
           winPitcher: g.W_PIT_P_NM?.trim()||null,
           losePitcher: g.L_PIT_P_NM?.trim()||null,
           savePitcher: g.S_PIT_P_NM?.trim()||null,
@@ -455,9 +428,8 @@ async function saveGameResults(dateStr) {
         create: {
           gameDate: dateStr, gameId: g.G_ID,
           awayTeam: (g.AWAY_NM||'').trim(), homeTeam: (g.HOME_NM||'').trim(),
-          awayScore: scores.awayScore, homeScore: scores.homeScore,
-          innings: scores.innings, stadium: (g.S_NM||'').trim(),
-          startTime: g.G_TM,
+          awayScore, homeScore, innings: [],
+          stadium: (g.S_NM||'').trim(), startTime: g.G_TM,
           awayPitcher: g.T_PIT_P_NM?.trim()||null,
           homePitcher: g.B_PIT_P_NM?.trim()||null,
           winPitcher: g.W_PIT_P_NM?.trim()||null,
@@ -465,13 +437,14 @@ async function saveGameResults(dateStr) {
           savePitcher: g.S_PIT_P_NM?.trim()||null,
         }
       });
+      savedCount++;
     }
-    console.log('[크론] ' + dateStr + ' 저장 완료');
+    console.log('[크론] ' + dateStr + ' 저장 완료: ' + savedCount + '경기');
   } catch(e) { console.error('[크론] 실패:', e.message); }
 }
 
 // 매일 23:50 자동 저장
-cron.schedule('50 23 * * *', () => {
+cron.schedule('*/30 18-23 * * *', () => {
   const kst = new Date(Date.now() + 9*60*60*1000);
   const d = kst.toISOString().slice(0,10).replace(/-/g,'');
   saveGameResults(d);
