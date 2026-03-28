@@ -461,6 +461,89 @@ app.get('/api/kbo/results/:date', async (req, res) => {
   } catch(e) { res.json({ success: false, data: [] }); }
 });
 
+// ── KBO 게임 캐시 ────────────────────────────────────
+const kboCache = {};
+
+app.get('/api/kbo/games/:date', async (req, res) => {
+  const { date } = req.params;
+  const cacheKey = `games_${date}`;
+  const now = Date.now();
+
+  // 캐시 유효: 오늘 경기는 60초, 지난/미래 경기는 1시간
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+  const cacheTTL = date === todayStr ? 60000 : 3600000;
+
+  if (kboCache[cacheKey] && now - kboCache[cacheKey].time < cacheTTL) {
+    return res.json({ success: true, data: kboCache[cacheKey].data, cached: true });
+  }
+
+  try {
+    const listUrl = `https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList?leId=1&srId=0,1,3,4,5&date=${date}`;
+    const listRes = await axios.get(listUrl, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.koreabaseball.com' }
+    });
+    const listData = listRes.data;
+    if (!listData?.game?.length) {
+      kboCache[cacheKey] = { time: now, data: [] };
+      return res.json({ success: true, data: [] });
+    }
+
+    // 오늘 경기면 스코어보드도 조회
+    let scoreMap = {};
+    if (date === todayStr) {
+      try {
+        const cheerio = require('cheerio');
+        const scoreRes = await axios.get('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx', {
+          timeout: 10000,
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.koreabaseball.com' }
+        });
+        const $ = cheerio.load(scoreRes.data);
+        $('.tScore').each((i, table) => {
+          const rows = $(table).find('tbody tr');
+          if (rows.length < 2) return;
+          const away = $(rows[0]).find('th').text().trim();
+          const home = $(rows[1]).find('th').text().trim();
+          const as = $(rows[0]).find('.point').text().trim();
+          const hs = $(rows[1]).find('.point').text().trim();
+          const aTds = $(rows[0]).find('td:not(.point):not(.hit)').toArray();
+          const hTds = $(rows[1]).find('td:not(.point):not(.hit)').toArray();
+          const innings = aTds.slice(0,12).map((td,idx) => ({
+            away: $(td).text().trim()==='-' ? null : parseInt($(td).text()),
+            home: $(hTds[idx]) ? ($(hTds[idx]).text().trim()==='-' ? null : parseInt($(hTds[idx]).text())) : null,
+          })).filter(x => x.away!==null || x.home!==null);
+          if (as && as !== '-' && as !== '') {
+            scoreMap[away+'-'+home] = { awayScore: parseInt(as), homeScore: parseInt(hs), innings };
+          }
+        });
+      } catch(e) {}
+    }
+
+    const games = listData.game.map((g, i) => {
+      const key = `${(g.AWAY_NM||'').trim()}-${(g.HOME_NM||'').trim()}`;
+      const scores = scoreMap[key] || {};
+      const isPast = date < todayStr;
+      return {
+        id: i+1, gameId: g.G_ID,
+        awayTeam: (g.AWAY_NM||'').trim(), homeTeam: (g.HOME_NM||'').trim(),
+        awayScore: scores.awayScore ?? null,
+        homeScore: scores.homeScore ?? null,
+        innings: scores.innings || [],
+        state: scores.awayScore != null ? '종료' : isPast ? '종료' : '예정',
+        startTime: g.G_TM, stadium: g.S_NM, dateStr: date,
+        awayPitcher: g.T_PIT_P_NM, homePitcher: g.B_PIT_P_NM,
+        winPitcher: g.W_PIT_P_NM, losePitcher: g.L_PIT_P_NM, savePitcher: g.S_PIT_P_NM,
+      };
+    });
+
+    kboCache[cacheKey] = { time: now, data: games };
+    res.json({ success: true, data: games, cached: false });
+  } catch(e) {
+    res.json({ success: false, data: [], error: e.message });
+  }
+});
+
 // KBO 접근 테스트
 app.get('/api/kbo/test', async (req, res) => {
   try {
