@@ -18,29 +18,20 @@ const allowedOrigins = [
 const app = express();
 const server = http.createServer(app);
 
-// ✅ 이제 allowedOrigins가 정의된 상태에서 사용
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST'],
-    credentials: true,
-  }
-});
+// ✅ JSON 파싱 먼저
+app.use(express.json());
 
-const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3001; // ✅ Railway PORT 환경변수 반영
-
+// ✅ CORS
 app.use(cors({
   origin: function(origin, callback) {
-    // origin이 없으면 서버간 요청 (허용)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+    if (allowedOrigins.includes(origin)) return callback(null, true);
     return callback(new Error('CORS 차단: ' + origin));
   },
   credentials: true,
 }));
+
+// ✅ 세션/패스포트
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -108,7 +99,6 @@ app.get('/auth/me', (req, res) => {
     res.status(401).json({ success: false, message: '토큰 만료' });
   }
 });
-app.use(express.json());
 
 // ── REST API ────────────────────────────────────────
 
