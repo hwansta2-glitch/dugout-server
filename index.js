@@ -13,6 +13,7 @@ const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 
 const allowedOrigins = [
+  'https://dugout-blue.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
   'https://voluble-snickerdoodle-794915.netlify.app',
