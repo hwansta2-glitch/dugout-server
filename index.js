@@ -26,13 +26,11 @@ const io = new Server(server, {
   cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true }
 });
 
-// Cloudinary 설정
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
 const imageStorage = new CloudinaryStorage({
   cloudinary,
   params: { folder: 'dugout/images', allowed_formats: ['jpg','jpeg','png','gif','webp'], transformation: [{ width:1200, crop:'limit' }] },
@@ -71,7 +69,6 @@ passport.use(new GoogleStrategy({
     return done(null, user);
   } catch(e) { return done(e, null); }
 }));
-
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
   const user = await prisma.user.findUnique({ where: { id } });
@@ -90,7 +87,6 @@ app.get('/auth/google/callback',
   }
 );
 app.get('/auth/failed', (req, res) => res.json({ success: false, message: '로그인 실패' }));
-
 app.get('/auth/me', async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ success: false, message: '토큰 없음' });
@@ -104,7 +100,6 @@ app.get('/auth/me', async (req, res) => {
 
 app.get('/', (req, res) => res.json({ message: '⚾ Dugout 서버 실행 중!', version: '2.0.0' }));
 
-// 게시글 목록
 app.get('/api/posts', async (req, res) => {
   try {
     const { boardType } = req.query;
@@ -117,7 +112,6 @@ app.get('/api/posts', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 게시글 작성
 app.post('/api/posts', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -125,39 +119,25 @@ app.post('/api/posts', async (req, res) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const { title, content, team, boardType, tag, imageUrl, videoUrl } = req.body;
     const post = await prisma.post.create({
-      data: {
-        title,
-        content: content || '',
-        team: team || '',
-        boardType: boardType || 'team',
-        tag: tag || '',
-        imageUrl: imageUrl || null,
-        videoUrl: videoUrl || null,
-        authorId: decoded.id,
-      },
+      data: { title, content: content||'', team: team||'', boardType: boardType||'team', tag: tag||'', imageUrl: imageUrl||null, videoUrl: videoUrl||null, authorId: decoded.id },
       include: { author: { select: { name: true, team: true, nickname: true } } },
     });
     res.status(201).json({ success: true, data: post });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 게시글 좋아요
 app.post('/api/posts/:id/like', async (req, res) => {
   try {
     const post = await prisma.post.update({ where: { id: parseInt(req.params.id) }, data: { likes: { increment: 1 } } });
     res.json({ success: true, data: post });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 게시글 비추천
 app.post('/api/posts/:id/dislike', async (req, res) => {
   try {
     const post = await prisma.post.update({ where: { id: parseInt(req.params.id) }, data: { dislikes: { increment: 1 } } });
     res.json({ success: true, data: post });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 게시글 삭제
 app.delete('/api/posts/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -172,7 +152,6 @@ app.delete('/api/posts/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 댓글 목록
 app.get('/api/posts/:id/comments', async (req, res) => {
   try {
     const comments = await prisma.comment.findMany({
@@ -183,8 +162,6 @@ app.get('/api/posts/:id/comments', async (req, res) => {
     res.json({ success: true, data: comments });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 댓글 작성
 app.post('/api/posts/:id/comments', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -199,7 +176,6 @@ app.post('/api/posts/:id/comments', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 댓글 추천/비추천
 app.post('/api/comments/:id/like', async (req, res) => {
   try {
     const comment = await prisma.comment.update({ where: { id: parseInt(req.params.id) }, data: { likes: { increment: 1 } } });
@@ -212,8 +188,6 @@ app.post('/api/comments/:id/dislike', async (req, res) => {
     res.json({ success: true, data: comment });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 댓글 삭제
 app.delete('/api/comments/:id', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -227,7 +201,6 @@ app.delete('/api/comments/:id', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 유저 생성
 app.post('/api/users', async (req, res) => {
   try {
     const { email, name, team } = req.body;
@@ -235,8 +208,6 @@ app.post('/api/users', async (req, res) => {
     res.json({ success: true, data: user });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 출석체크
 app.post('/api/users/:id/checkin', async (req, res) => {
   try {
     const user = await prisma.user.update({ where: { id: parseInt(req.params.id) }, data: { points: { increment: 50 } } });
@@ -244,8 +215,6 @@ app.post('/api/users/:id/checkin', async (req, res) => {
     res.json({ success: true, data: user });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 닉네임 설정
 app.post('/api/users/:id/nickname', async (req, res) => {
   try {
     const { nickname } = req.body;
@@ -270,7 +239,6 @@ app.post('/api/users/:id/nickname', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 게시글 검색
 app.get('/api/search', async (req, res) => {
   try {
     const { q, boardType } = req.query;
@@ -290,57 +258,66 @@ app.get('/api/search', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// 뉴스
 app.get('/api/news', (req, res) => {
-  const url = 'https://sports.news.naver.com/kbaseball/news/index?isphoto=N';
+  const url = 'https://rss.news.naver.com/rssnews/sports-baseball.xml';
   https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
     let data = '';
     response.on('data', chunk => data += chunk);
     response.on('end', () => {
       const items = [];
-      const regex = /<a[^>]+href="(\/kbaseball\/news\/read[^"]+)"[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/a>/g;
-      let match;
-      while ((match = regex.exec(data)) !== null && items.length < 20) {
-        items.push({ title: match[2].trim(), link: 'https://sports.news.naver.com' + match[1] });
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let m;
+      while ((m = itemRegex.exec(data)) !== null && items.length < 20) {
+        const block = m[1];
+        const titleMatch = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/);
+        const linkMatch = block.match(/<link>([^<]+)<\/link>/);
+        const pubMatch = block.match(/<pubDate>([^<]+)<\/pubDate>/);
+        if (titleMatch && linkMatch) {
+          items.push({ title: titleMatch[1].trim(), link: linkMatch[1].trim(), time: pubMatch ? pubMatch[1].trim() : '' });
+        }
       }
       res.json({ success: true, data: items });
     });
   }).on('error', (e) => res.status(500).json({ success: false, message: e.message }));
 });
 
-// KBO 경기 데이터
+app.get('/api/sports/news', (req, res) => {
+  const url = 'https://rss.news.naver.com/rssnews/sports-baseball.xml';
+  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+    let data = '';
+    response.on('data', chunk => data += chunk);
+    response.on('end', () => {
+      const items = [];
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let m;
+      while ((m = itemRegex.exec(data)) !== null && items.length < 15) {
+        const block = m[1];
+        const titleMatch = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/);
+        const linkMatch = block.match(/<link>([^<]+)<\/link>/);
+        const pubMatch = block.match(/<pubDate>([^<]+)<\/pubDate>/);
+        if (titleMatch && linkMatch) {
+          items.push({ title: titleMatch[1].trim(), link: linkMatch[1].trim(), time: pubMatch ? pubMatch[1].trim() : '' });
+        }
+      }
+      res.json({ success: true, data: items });
+    });
+  }).on('error', (e) => res.status(500).json({ success: false, message: e.message }));
+});
+
 app.get('/api/kbo/games', (req, res) => {
   const today = new Date();
   const yyyy = today.getFullYear();
   const mm = String(today.getMonth() + 1).padStart(2, '0');
   const dd = String(today.getDate()).padStart(2, '0');
-  const url = `https://sports.news.naver.com/kbaseball/schedule/index?date=${yyyy}${mm}${dd}`;
-  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
-    let data = '';
-    response.on('data', chunk => data += chunk);
-    response.on('end', () => {
-      try {
-        const games = [];
-        const regex = /class="team_lft"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?class="score[^"]*"[^>]*>([\d]+)<[\s\S]*?class="score[^"]*"[^>]*>([\d]+)<[\s\S]*?class="team_rgt"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/g;
-        let match;
-        while ((match = regex.exec(data)) !== null) {
-          games.push({ awayTeam: match[1].trim(), awayScore: match[2], homeScore: match[3], homeTeam: match[4].trim(), date: `${yyyy}-${mm}-${dd}` });
-        }
-        res.json({ success: true, data: games, date: `${yyyy}-${mm}-${dd}` });
-      } catch(e) { res.status(500).json({ success: false, message: e.message }); }
-    });
-  }).on('error', (e) => res.status(500).json({ success: false, message: e.message }));
+  res.json({ success: true, data: [], date: yyyy+'-'+mm+'-'+dd });
 });
 
-// 이미지 업로드
 app.post('/api/upload/image', uploadImage.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: '파일 없음' });
     res.json({ success: true, url: req.file.path });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
-
-// 동영상 업로드
 app.post('/api/upload/video', uploadVideo.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: '파일 없음' });
@@ -348,7 +325,6 @@ app.post('/api/upload/video', uploadVideo.single('file'), (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// Socket.io 채팅
 io.on('connection', (socket) => {
   console.log('유저 접속: ' + socket.id);
   socket.on('join', async (roomId) => {
@@ -393,35 +369,5 @@ io.on('connection', (socket) => {
   });
   socket.on('disconnect', () => console.log('유저 퇴장: ' + socket.id));
 });
-
-// 야구 뉴스
-app.get('/api/sports/news', (req, res) => {
-  const url = 'https://rss.news.naver.com/rssnews/sports-baseball.xml';
-  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
-    let data = '';
-    response.on('data', chunk => data += chunk);
-    response.on('end', () => {
-      const items = [];
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let m;
-      while ((m = itemRegex.exec(data)) !== null && items.length < 15) {
-        const block = m[1];
-        const titleMatch = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/);
-        const linkMatch = block.match(/<link>([^<]+)<\/link>/);
-        const pubMatch = block.match(/<pubDate>([^<]+)<\/pubDate>/);
-        if (titleMatch && linkMatch) {
-          items.push({
-            title: titleMatch[1].trim(),
-            link: linkMatch[1].trim(),
-            time: pubMatch ? pubMatch[1].trim() : '',
-          });
-        }
-      }
-      res.json({ success: true, data: items });
-    });
-  }).on('error', (e) => res.status(500).json({ success: false, message: e.message }));
-});
-
-// 야구 뉴스
 
 server.listen(PORT, () => console.log('Dugout 서버 실행 중: http://localhost:' + PORT));
