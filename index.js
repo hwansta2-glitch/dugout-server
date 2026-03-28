@@ -8,8 +8,17 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
 const jwt = require('jsonwebtoken');
 
+// ✅ allowedOrigins를 먼저 선언
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'https://voluble-snickerdoodle-794915.netlify.app',
+];
+
 const app = express();
 const server = http.createServer(app);
+
+// ✅ 이제 allowedOrigins가 정의된 상태에서 사용
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
@@ -17,14 +26,9 @@ const io = new Server(server, {
     credentials: true,
   }
 });
-const prisma = new PrismaClient();
-const PORT = 3001;
 
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'https://voluble-snickerdoodle-794915.netlify.app',
-];
+const prisma = new PrismaClient();
+const PORT = process.env.PORT || 3001; // ✅ Railway PORT 환경변수 반영
 
 app.use(cors({
   origin: function(origin, callback) {
