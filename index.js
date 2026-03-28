@@ -406,14 +406,18 @@ async function saveGameResults(dateStr) {
     console.log('[크론] ' + dateStr + ' 저장 시작');
     const cheerio = require('cheerio');
     const listUrl = 'https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList?leId=1&srId=0,1,3,4,5&date=' + dateStr;
-    const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(listUrl);
-    const listRes = await axios.get(proxyUrl, { timeout: 15000 });
-    const listData = JSON.parse(listRes.data.contents);
+    const listRes = await axios.get(listUrl, {
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Referer': 'https://www.koreabaseball.com' }
+    });
+    const listData = listRes.data;
     if (!listData?.game?.length) { console.log('[크론] 경기 없음'); return; }
 
-    const scoreProxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx');
-    const scoreRes = await axios.get(scoreProxy, { timeout: 15000 });
-    const $ = cheerio.load(scoreRes.data.contents);
+    const scoreRes = await axios.get('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx', {
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36', 'Referer': 'https://www.koreabaseball.com' }
+    });
+    const $ = cheerio.load(scoreRes.data);
     const scoreMap = {};
     $('.tScore').each((i, table) => {
       const rows = $(table).find('tbody tr');
