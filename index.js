@@ -488,6 +488,36 @@ app.get('/api/kbo/results/:date', async (req, res) => {
   } catch(e) { res.json({ success: false, data: [] }); }
 });
 
+// KBO 접근 테스트
+app.get('/api/kbo/test', async (req, res) => {
+  try {
+    const r1 = await axios.get('https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList?leId=1&srId=0,1,3,4,5&date=20260328', {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.koreabaseball.com' }
+    });
+    const r2 = await axios.get('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx', {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.koreabaseball.com' }
+    });
+    const cheerio = require('cheerio');
+    const $ = cheerio.load(r2.data);
+    const tables = $('.tScore').length;
+    const scores = [];
+    $('.tScore').each((i, t) => {
+      const rows = $(t).find('tbody tr');
+      scores.push({
+        away: $(rows[0]).find('th').text().trim(),
+        awayScore: $(rows[0]).find('.point').text().trim(),
+        homeScore: $(rows[1]).find('.point').text().trim(),
+        home: $(rows[1]).find('th').text().trim(),
+      });
+    });
+    res.json({ games: r1.data?.game?.length, scoreTables: tables, scores });
+  } catch(e) {
+    res.json({ error: e.message, code: e.code });
+  }
+});
+
 // 수동 저장 트리거 (테스트용)
 app.post('/api/kbo/save-results', async (req, res) => {
   const { date } = req.body;
