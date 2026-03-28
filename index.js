@@ -443,12 +443,7 @@ async function saveGameResults(dateStr) {
   } catch(e) { console.error('[크론] 실패:', e.message); }
 }
 
-// 매일 23:50 자동 저장
-cron.schedule('*/30 18-23 * * *', () => {
-  const kst = new Date(Date.now() + 9*60*60*1000);
-  const d = kst.toISOString().slice(0,10).replace(/-/g,'');
-  saveGameResults(d);
-}, { timezone: 'Asia/Seoul' });
+// 크론잡 제거 - KBO API에서 직접 점수 제공
 
 // 지난 경기 결과 조회
 app.get('/api/kbo/results/:date', async (req, res) => {
@@ -525,13 +520,18 @@ app.get('/api/kbo/games/:date', async (req, res) => {
     const games = listData.game.map((g, i) => {
       const key = `${(g.AWAY_NM||'').trim()}-${(g.HOME_NM||'').trim()}`;
       const scores = scoreMap[key] || {};
+      // T_SCORE_CN(원정), B_SCORE_CN(홈): KBO API가 지난 경기도 반환
+      const apiAwayScore = (g.T_SCORE_CN != null && g.T_SCORE_CN !== '') ? parseInt(g.T_SCORE_CN) : null;
+      const apiHomeScore = (g.B_SCORE_CN != null && g.B_SCORE_CN !== '') ? parseInt(g.B_SCORE_CN) : null;
+      const finalAwayScore = scores.awayScore ?? apiAwayScore;
+      const finalHomeScore = scores.homeScore ?? apiHomeScore;
       return {
         id: i+1, gameId: g.G_ID,
         awayTeam: (g.AWAY_NM||'').trim(), homeTeam: (g.HOME_NM||'').trim(),
-        awayScore: scores.awayScore ?? null,
-        homeScore: scores.homeScore ?? null,
+        awayScore: finalAwayScore,
+        homeScore: finalHomeScore,
         innings: scores.innings || [],
-        state: scores.awayScore != null ? '종료' : isPast ? '종료' : '예정',
+        state: finalAwayScore != null ? '종료' : isPast ? '종료' : '예정',
         startTime: g.G_TM, stadium: g.S_NM, dateStr: date,
         awayPitcher: g.T_PIT_P_NM, homePitcher: g.B_PIT_P_NM,
         winPitcher: g.W_PIT_P_NM, losePitcher: g.L_PIT_P_NM, savePitcher: g.S_PIT_P_NM,
