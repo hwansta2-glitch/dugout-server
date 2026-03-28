@@ -67,3 +67,22 @@ model PointLog {
   reason    String
   createdAt DateTime @default(now())
 }
+
+model GameResult {
+  id         Int      @id @default(autoincrement())
+  gameDate   String   // yyyymmdd
+  gameId     String   @unique
+  awayTeam   String
+  homeTeam   String
+  awayScore  Int?
+  homeScore  Int?
+  stadium    String?
+  startTime  String?
+  awayPitcher String?
+  homePitcher String?
+  winPitcher  String?
+  losePitcher String?
+  savePitcher String?
+  innings     Json?
+  createdAt  DateTime @default(now())
+}

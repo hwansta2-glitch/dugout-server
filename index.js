@@ -1,4 +1,8 @@
 const express = require('express');
+const cron = require('node-cron');
+const axios = require('axios');
+const cron = require('node-cron');
+const axios = require('axios');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
@@ -259,6 +263,34 @@ app.get('/api/search', async (req, res) => {
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// statiz.co.kr 경기 결과 파싱
+app.get('/api/kbo/results', async (req, res) => {
+  const { date } = req.query; // yyyymmdd
+  try {
+    const axios = require('axios');
+    const cheerio = require('cheerio');
+    const url = `https://www.statiz.co.kr/schedule.php?opt=1&type=day&year=${date.slice(0,4)}&month=${parseInt(date.slice(4,6))}&day=${parseInt(date.slice(6,8))}`;
+    const resp = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }, timeout: 10000 });
+    const $ = cheerio.load(resp.data);
+    const results = [];
+    $('table.table tbody tr').each((i, row) => {
+      const cells = $(row).find('td');
+      if (cells.length >= 5) {
+        const away = $(cells[0]).text().trim();
+        const awayScore = parseInt($(cells[1]).text().trim());
+        const homeScore = parseInt($(cells[3]).text().trim());
+        const home = $(cells[4]).text().trim();
+        if (away && home && !isNaN(awayScore)) {
+          results.push({ away, awayScore, homeScore, home });
+        }
+      }
+    });
+    res.json({ success: true, data: results });
+  } catch(e) {
+    res.json({ success: false, data: [] });
+  }
+});
+
 app.get('/api/news', (req, res) => {
   const url = 'https://rss.news.naver.com/rssnews/sports-baseball.xml';
   https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
@@ -369,6 +401,98 @@ io.on('connection', (socket) => {
     io.to(data.roomId || 'general').emit('receive_reaction', data);
   });
   socket.on('disconnect', () => console.log('유저 퇴장: ' + socket.id));
+});
+
+// ── 경기 결과 저장 함수 ──────────────────────────────
+async function saveGameResults(dateStr) {
+  try {
+    console.log('[크론] ' + dateStr + ' 저장 시작');
+    const cheerio = require('cheerio');
+    const listUrl = 'https://www.koreabaseball.com/ws/Main.asmx/GetKboGameList?leId=1&srId=0,1,3,4,5&date=' + dateStr;
+    const proxyUrl = 'https://api.allorigins.win/get?url=' + encodeURIComponent(listUrl);
+    const listRes = await axios.get(proxyUrl, { timeout: 15000 });
+    const listData = JSON.parse(listRes.data.contents);
+    if (!listData?.game?.length) { console.log('[크론] 경기 없음'); return; }
+
+    const scoreProxy = 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://www.koreabaseball.com/Schedule/ScoreBoard.aspx');
+    const scoreRes = await axios.get(scoreProxy, { timeout: 15000 });
+    const $ = cheerio.load(scoreRes.data.contents);
+    const scoreMap = {};
+    $('.tScore').each((i, table) => {
+      const rows = $(table).find('tbody tr');
+      if (rows.length < 2) return;
+      const away = $(rows[0]).find('th').text().trim();
+      const home = $(rows[1]).find('th').text().trim();
+      const as = $(rows[0]).find('.point').text().trim();
+      const hs = $(rows[1]).find('.point').text().trim();
+      const aTds = $(rows[0]).find('td:not(.point):not(.hit)').toArray();
+      const hTds = $(rows[1]).find('td:not(.point):not(.hit)').toArray();
+      const innings = aTds.slice(0,12).map((td,idx) => ({
+        away: $(td).text().trim()==='-' ? null : parseInt($(td).text()),
+        home: $(hTds[idx]).text().trim()==='-' ? null : parseInt($(hTds[idx]).text()),
+      })).filter(x => x.away!==null || x.home!==null);
+      scoreMap[away+'-'+home] = {
+        awayScore: as&&as!=='-' ? parseInt(as) : null,
+        homeScore: hs&&hs!=='-' ? parseInt(hs) : null,
+        innings,
+      };
+    });
+
+    for (const g of listData.game) {
+      const key = (g.AWAY_NM||'').trim() + '-' + (g.HOME_NM||'').trim();
+      const scores = scoreMap[key] || {};
+      if (scores.awayScore == null) continue;
+      await prisma.gameResult.upsert({
+        where: { gameId: g.G_ID },
+        update: {
+          awayScore: scores.awayScore, homeScore: scores.homeScore,
+          innings: scores.innings,
+          winPitcher: g.W_PIT_P_NM?.trim()||null,
+          losePitcher: g.L_PIT_P_NM?.trim()||null,
+          savePitcher: g.S_PIT_P_NM?.trim()||null,
+        },
+        create: {
+          gameDate: dateStr, gameId: g.G_ID,
+          awayTeam: (g.AWAY_NM||'').trim(), homeTeam: (g.HOME_NM||'').trim(),
+          awayScore: scores.awayScore, homeScore: scores.homeScore,
+          innings: scores.innings, stadium: (g.S_NM||'').trim(),
+          startTime: g.G_TM,
+          awayPitcher: g.T_PIT_P_NM?.trim()||null,
+          homePitcher: g.B_PIT_P_NM?.trim()||null,
+          winPitcher: g.W_PIT_P_NM?.trim()||null,
+          losePitcher: g.L_PIT_P_NM?.trim()||null,
+          savePitcher: g.S_PIT_P_NM?.trim()||null,
+        }
+      });
+    }
+    console.log('[크론] ' + dateStr + ' 저장 완료');
+  } catch(e) { console.error('[크론] 실패:', e.message); }
+}
+
+// 매일 23:50 자동 저장
+cron.schedule('50 23 * * *', () => {
+  const kst = new Date(Date.now() + 9*60*60*1000);
+  const d = kst.toISOString().slice(0,10).replace(/-/g,'');
+  saveGameResults(d);
+}, { timezone: 'Asia/Seoul' });
+
+// 지난 경기 결과 조회
+app.get('/api/kbo/results/:date', async (req, res) => {
+  try {
+    const results = await prisma.gameResult.findMany({
+      where: { gameDate: req.params.date },
+      orderBy: { id: 'asc' }
+    });
+    res.json({ success: true, data: results });
+  } catch(e) { res.json({ success: false, data: [] }); }
+});
+
+// 수동 저장 트리거 (테스트용)
+app.post('/api/kbo/save-results', async (req, res) => {
+  const { date } = req.body;
+  if (!date) return res.json({ success: false, message: 'date required' });
+  saveGameResults(date);
+  res.json({ success: true, message: date + ' 저장 시작' });
 });
 
 server.listen(PORT, () => console.log('Dugout 서버 실행 중: http://localhost:' + PORT));
