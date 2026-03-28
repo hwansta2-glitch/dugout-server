@@ -1,8 +1,6 @@
 const express = require('express');
 const cron = require('node-cron');
 const axios = require('axios');
-const cron = require('node-cron');
-const axios = require('axios');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
@@ -267,7 +265,6 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/kbo/results', async (req, res) => {
   const { date } = req.query; // yyyymmdd
   try {
-    const axios = require('axios');
     const cheerio = require('cheerio');
     const url = `https://www.statiz.co.kr/schedule.php?opt=1&type=day&year=${date.slice(0,4)}&month=${parseInt(date.slice(4,6))}&day=${parseInt(date.slice(6,8))}`;
     const resp = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' }, timeout: 10000 });
