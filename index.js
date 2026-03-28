@@ -265,4 +265,42 @@ app.post('/api/posts/:id/comments', async (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
+// 게시글 비추천
+app.post('/api/posts/:id/dislike', async (req, res) => {
+  try {
+    const post = await prisma.post.update({
+      where: { id: parseInt(req.params.id) },
+      data: { dislikes: { increment: 1 } },
+    });
+    res.json({ success: true, data: post });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 댓글 추천
+app.post('/api/comments/:id/like', async (req, res) => {
+  try {
+    const comment = await prisma.comment.update({
+      where: { id: parseInt(req.params.id) },
+      data: { likes: { increment: 1 } },
+    });
+    res.json({ success: true, data: comment });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 댓글 비추천
+app.post('/api/comments/:id/dislike', async (req, res) => {
+  try {
+    const comment = await prisma.comment.update({
+      where: { id: parseInt(req.params.id) },
+      data: { dislikes: { increment: 1 } },
+    });
+    res.json({ success: true, data: comment });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 server.listen(PORT, () => console.log('✅ Dugout 서버 실행 중: http://localhost:' + PORT));
