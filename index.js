@@ -520,10 +520,10 @@ app.get('/api/kbo/games/:date', async (req, res) => {
       } catch(e) {}
     }
 
+    const isPast = date < todayStr;
     const games = listData.game.map((g, i) => {
       const key = `${(g.AWAY_NM||'').trim()}-${(g.HOME_NM||'').trim()}`;
       const scores = scoreMap[key] || {};
-      const isPast = date < todayStr;
       return {
         id: i+1, gameId: g.G_ID,
         awayTeam: (g.AWAY_NM||'').trim(), homeTeam: (g.HOME_NM||'').trim(),
@@ -542,6 +542,12 @@ app.get('/api/kbo/games/:date', async (req, res) => {
   } catch(e) {
     res.json({ success: false, data: [], error: e.message });
   }
+});
+
+// 캐시 초기화 (관리용)
+app.post('/api/kbo/cache/clear', (req, res) => {
+  Object.keys(kboCache).forEach(k => delete kboCache[k]);
+  res.json({ success: true, message: '캐시 초기화 완료' });
 });
 
 // KBO 접근 테스트
