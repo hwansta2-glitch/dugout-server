@@ -521,8 +521,10 @@ app.get('/api/kbo/games/:date', async (req, res) => {
       const key = `${(g.AWAY_NM||'').trim()}-${(g.HOME_NM||'').trim()}`;
       const scores = scoreMap[key] || {};
       // T_SCORE_CN(원정), B_SCORE_CN(홈): KBO API가 지난 경기도 반환
-      const apiAwayScore = (g.T_SCORE_CN != null && g.T_SCORE_CN !== '') ? parseInt(g.T_SCORE_CN) : null;
-      const apiHomeScore = (g.B_SCORE_CN != null && g.B_SCORE_CN !== '') ? parseInt(g.B_SCORE_CN) : null;
+      // GAME_RESULT_CK=1 이면 경기 종료
+      const isFinished = g.GAME_RESULT_CK === 1 || g.GAME_RESULT_CK === '1';
+      const apiAwayScore = isFinished && g.T_SCORE_CN != null && g.T_SCORE_CN !== '' ? parseInt(g.T_SCORE_CN) : null;
+      const apiHomeScore = isFinished && g.B_SCORE_CN != null && g.B_SCORE_CN !== '' ? parseInt(g.B_SCORE_CN) : null;
       const finalAwayScore = scores.awayScore ?? apiAwayScore;
       const finalHomeScore = scores.homeScore ?? apiHomeScore;
       return {
@@ -531,7 +533,7 @@ app.get('/api/kbo/games/:date', async (req, res) => {
         awayScore: finalAwayScore,
         homeScore: finalHomeScore,
         innings: scores.innings || [],
-        state: finalAwayScore != null ? '종료' : isPast ? '종료' : '예정',
+        state: isFinished ? '종료' : isPast ? '종료' : '예정',
         startTime: g.G_TM, stadium: g.S_NM, dateStr: date,
         awayPitcher: g.T_PIT_P_NM, homePitcher: g.B_PIT_P_NM,
         winPitcher: g.W_PIT_P_NM, losePitcher: g.L_PIT_P_NM, savePitcher: g.S_PIT_P_NM,
