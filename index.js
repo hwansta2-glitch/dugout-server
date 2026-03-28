@@ -396,23 +396,25 @@ io.on('connection', (socket) => {
 
 // 야구 뉴스
 app.get('/api/sports/news', (req, res) => {
-  const url = 'https://sports.daum.net/baseball';
-  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15', 'Referer': 'https://sports.daum.net' } }, (response) => {
+  const url = 'https://rss.news.naver.com/rssnews/sports-baseball.xml';
+  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
     let data = '';
     response.on('data', chunk => data += chunk);
     response.on('end', () => {
       const items = [];
-      const regex = /class="tit_feed"[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
-      let match;
-      while ((match = regex.exec(data)) !== null && items.length < 15) {
-        items.push({ title: match[2].trim(), link: match[1] });
-      }
-      if (items.length === 0) {
-        const r2 = /"title":"([^"]{10,100})","(?:pcLink|mLink|link)":"(https:\/\/[^"]+)"/g;
-        while ((match = r2.exec(data)) !== null && items.length < 15) {
-          if (match[1].includes('KBO') || match[1].includes('야구') || match[1].includes('KIA') || match[1].includes('LG') || match[1].includes('롯데') || match[1].includes('한화') || match[1].includes('삼성') || match[1].includes('두산') || match[1].includes('NC') || match[1].includes('SSG') || match[1].includes('키움') || match[1].includes('KT')) {
-            items.push({ title: match[1], link: match[2] });
-          }
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let m;
+      while ((m = itemRegex.exec(data)) !== null && items.length < 15) {
+        const block = m[1];
+        const titleMatch = block.match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/);
+        const linkMatch = block.match(/<link>([^<]+)<\/link>/);
+        const pubMatch = block.match(/<pubDate>([^<]+)<\/pubDate>/);
+        if (titleMatch && linkMatch) {
+          items.push({
+            title: titleMatch[1].trim(),
+            link: linkMatch[1].trim(),
+            time: pubMatch ? pubMatch[1].trim() : '',
+          });
         }
       }
       res.json({ success: true, data: items });
