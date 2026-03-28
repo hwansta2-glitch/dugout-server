@@ -303,4 +303,64 @@ app.post('/api/comments/:id/dislike', async (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
+// 게시글 삭제 (작성자 본인만)
+app.delete('/api/posts/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: '로그인 필요' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const post = await prisma.post.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!post) return res.status(404).json({ success: false, message: '게시글 없음' });
+    if (post.authorId !== decoded.id) return res.status(403).json({ success: false, message: '본인 게시글만 삭제 가능' });
+    // 댓글 먼저 삭제 후 게시글 삭제
+    await prisma.comment.deleteMany({ where: { postId: post.id } });
+    await prisma.post.delete({ where: { id: post.id } });
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 댓글 삭제 (작성자 본인만)
+app.delete('/api/comments/:id', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) return res.status(401).json({ success: false, message: '로그인 필요' });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const comment = await prisma.comment.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!comment) return res.status(404).json({ success: false, message: '댓글 없음' });
+    if (comment.authorId !== decoded.id) return res.status(403).json({ success: false, message: '본인 댓글만 삭제 가능' });
+    await prisma.comment.delete({ where: { id: parseInt(req.params.id) } });
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// 게시글 검색
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q, boardType } = req.query;
+    if (!q) return res.json({ success: true, data: [] });
+    const posts = await prisma.post.findMany({
+      where: {
+        AND: [
+          boardType ? { boardType } : {},
+          {
+            OR: [
+              { title:   { contains: q, mode: 'insensitive' } },
+              { content: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+        ],
+      },
+      include: { author: { select: { name: true, nickname: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    });
+    res.json({ success: true, data: posts });
+  } catch(e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 server.listen(PORT, () => console.log('✅ Dugout 서버 실행 중: http://localhost:' + PORT));
