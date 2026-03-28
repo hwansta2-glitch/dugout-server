@@ -178,5 +178,28 @@ io.on('connection', (socket) => {
   });
   socket.on('disconnect', () => console.log('❌ 유저 퇴장: ' + socket.id));
 });
-
+// 뉴스 (네이버 RSS)
+const https = require('https');
+app.get('/api/news', (req, res) => {
+  const url = 'https://sports.news.naver.com/kbaseball/news/index?isphoto=N';
+  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+    let data = '';
+    response.on('data', chunk => data += chunk);
+    response.on('end', () => {
+      // 제목, 링크 파싱
+      const items = [];
+      const regex = /<a[^>]+href="(\/kbaseball\/news\/read[^"]+)"[^>]*class="[^"]*title[^"]*"[^>]*>([^<]+)<\/a>/g;
+      let match;
+      while ((match = regex.exec(data)) !== null && items.length < 20) {
+        items.push({
+          title: match[2].trim(),
+          link: 'https://sports.news.naver.com' + match[1],
+        });
+      }
+      res.json({ success: true, data: items });
+    });
+  }).on('error', (e) => {
+    res.status(500).json({ success: false, message: e.message });
+  });
+});
 server.listen(PORT, () => console.log('✅ Dugout 서버 실행 중: http://localhost:' + PORT));

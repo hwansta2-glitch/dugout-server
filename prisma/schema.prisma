@@ -8,29 +8,30 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int           @id @default(autoincrement())
+  email     String        @unique
   name      String
   team      String
-  points    Int      @default(0)
-  createdAt DateTime @default(now())
+  points    Int           @default(0)
+  createdAt DateTime      @default(now())
   posts     Post[]
   comments  Comment[]
   messages  ChatMessage[]
 }
 
 model Post {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   title     String
   content   String?
   team      String?
-  boardType String   @default("team")
-  likes     Int      @default(0)
-  views     Int      @default(0)
-  author    User     @relation(fields: [authorId], references: [id])
+  boardType String    @default("team")
+  tag       String    @default("")
+  likes     Int       @default(0)
+  views     Int       @default(0)
+  author    User      @relation(fields: [authorId], references: [id])
   authorId  Int
   comments  Comment[]
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 }
 
 model Comment {
