@@ -557,6 +557,16 @@ app.get('/api/kbo/games/:date', async (req, res) => {
         startTime: g.G_TM, stadium: g.S_NM, dateStr: date,
         awayPitcher: g.T_PIT_P_NM, homePitcher: g.B_PIT_P_NM,
         winPitcher: g.W_PIT_P_NM, losePitcher: g.L_PIT_P_NM, savePitcher: g.S_PIT_P_NM,
+        bases: {
+          first:  !!(g.B1_BAT_ORDER_NO && g.B1_BAT_ORDER_NO !== '0'),
+          second: !!(g.B2_BAT_ORDER_NO && g.B2_BAT_ORDER_NO !== '0'),
+          third:  !!(g.B3_BAT_ORDER_NO && g.B3_BAT_ORDER_NO !== '0'),
+        },
+        balls:   g.BALL_CN || 0,
+        strikes: g.STRIKE_CN || 0,
+        outs:    g.OUT_CN || 0,
+        currentPitcher:  isLive ? (g.T_P_NM || '').trim() : '',
+        currentBatter:   isLive ? (g.B_P_NM || '').trim() : '',
       };
     });
 
