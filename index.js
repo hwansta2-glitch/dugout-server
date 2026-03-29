@@ -218,6 +218,18 @@ app.post('/api/users/:id/checkin', async (req, res) => {
     res.json({ success: true, data: user });
   } catch(e) { res.status(500).json({ success: false, message: e.message }); }
 });
+app.post('/api/users/:id/team', async (req, res) => {
+  try {
+    const { team } = req.body;
+    if (!team) return res.json({ success: false, message: 'team required' });
+    const user = await prisma.user.update({
+      where: { id: parseInt(req.params.id) },
+      data: { team },
+    });
+    res.json({ success: true, data: user });
+  } catch(e) { res.json({ success: false, message: e.message }); }
+});
+
 app.post('/api/users/:id/nickname', async (req, res) => {
   try {
     const { nickname } = req.body;
