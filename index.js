@@ -559,6 +559,33 @@ app.get('/api/kbo/games/:date', async (req, res) => {
   }
 });
 
+// KBO 팀 순위 API
+app.get('/api/kbo/rank', async (req, res) => {
+  try {
+    const rankRes = await axios.post(
+      'https://www.koreabaseball.com/ws/Main.asmx/GetTeamRank',
+      'leId=1&srId=0',
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest', 'Referer': 'https://www.koreabaseball.com' }, timeout: 10000 }
+    );
+    const rows = rankRes.data?.rows || [];
+    const teams = rows.map(r => {
+      const cells = r.row;
+      const nameMatch = cells[1]?.Text?.match(/>([^<]+)</);
+      return {
+        rank:   cells[0]?.Text,
+        team:   nameMatch ? nameMatch[1] : cells[1]?.Text,
+        games:  cells[2]?.Text,
+        win:    cells[3]?.Text,
+        draw:   cells[4]?.Text,
+        lose:   cells[5]?.Text,
+        behind: cells[6]?.Text,
+        rate:   cells[7]?.Text,
+      };
+    });
+    res.json({ success: true, data: teams });
+  } catch(e) { res.json({ success: false, data: [], error: e.message }); }
+});
+
 // 캐시 초기화 (관리용)
 app.post('/api/kbo/cache/clear', (req, res) => {
   Object.keys(kboCache).forEach(k => delete kboCache[k]);
